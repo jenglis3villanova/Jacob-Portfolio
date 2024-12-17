@@ -1,0 +1,307 @@
+---
+title: "Seminar in Stats Project Part 2"
+author: "Jacob English"
+date: "2024-12-12"
+output: html_document
+---
+
+```{r setup, include=FALSE}
+suppressWarnings(library(tidyverse))
+
+suppressWarnings(library(readxl))
+
+suppressWarnings(library(car))
+
+suppressWarnings(library(mgcv))
+
+library(dplyr)
+
+insurance_backup <- read.csv("D:/Seminar in Stats Project/car_insurance_claim.csv")
+
+crash <- read_xlsx("D:/Seminar in Stats Project/Car Crash Data.xlsx")
+
+insurance <- insurance_backup
+
+omit.na.insurance <- insurance_backup %>%
+    filter(CLM_AMT != 0)
+
+insurance <- insurance_backup %>%
+    dplyr::select(CLM_AMT, HOMEKIDS, KIDSDRIV, INCOME, HOME_VAL, CAR_AGE, EDUCATION, MSTATUS, CAR_TYPE, OCCUPATION, AGE, GENDER, CLAIM_FLAG)
+
+
+insurance_clean <- na.omit(insurance)
+
+# Removing NAs and 0 from the log model
+insurance_clean1 <- insurance_clean[insurance_clean$CLM_AMT > 0 & !is.na(insurance_clean$CLM_AMT), ]
+
+
+# Putting in "NAs" so that I can try KNN imputation
+insurance_clean1_NA <- insurance_clean1
+
+# For median imputing
+insurance_clean2 <- insurance_clean1
+
+insurance_backup$CLM_AMT <- as.numeric(gsub("[\\$,]", "", insurance_backup$CLM_AMT))
+
+insurance_backup$INCOME <- as.numeric(gsub("[\\$,]", "", insurance_backup$INCOME))
+
+insurance_backup$HOME_VAL <- as.numeric(gsub("[\\$,]", "", insurance_backup$HOME_VAL))
+
+# Putting in "NAs" so that I can try KNN imputation
+insurance_clean1_NA <- insurance_clean1
+
+# Removing "0" values from HOME_VAL and INCOME
+zeroes_removed_insurance <- insurance_clean1 %>%
+    filter(HOME_VAL != 0, INCOME != 0)
+```
+
+```{r}
+# Quantitative Variables Distributions
+options(scipen = 999)
+par(mfrow = c(2,2))
+hist(insurance_backup$HOMEKIDS, breaks = 4, main = "Histogram of Kids in the Home", xlab = "Number of Kids in the Home")
+hist(insurance_backup$KIDSDRIV, breaks = 4, main = "Histogram of Kids Driving", xlab = "Number of Kids Driving")
+hist(insurance_backup$INCOME, breaks = 10, main = "Histogram of Income", xlab = "Income")
+hist(insurance_backup$HOME_VAL, main = "Histogram of Home Value", xlab = "Home Value")
+
+```
+
+```{r}
+# Creating a basic MLR model
+model <- lm(CLM_AMT ~ HOMEKIDS + KIDSDRIV + INCOME + HOME_VAL + CAR_AGE + EDUCATION + MSTATUS + CAR_TYPE + OCCUPATION, data = insurance_backup)
+summary(model)
+```
+
+```{r}
+# Correlation Matrix
+insurance.backup <- insurance_backup
+
+insurance.filter <- insurance_backup %>%
+    select(CLM_AMT, HOMEKIDS, KIDSDRIV, INCOME, HOME_VAL, CAR_AGE, EDUCATION, MSTATUS, CAR_TYPE, OCCUPATION, AGE, GENDER, CLAIM_FLAG)
+
+# Replacing 0 values with NA's for KNN imputation
+insurance.filter$CLM_AMT[insurance.filter$CLM_AMT == 0] <- NA
+
+
+
+library(ggcorrplot)
+numeric_data <- insurance.filter[sapply(insurance.filter, is.numeric)]
+cor_matrix <- cor(numeric_data, use="complete.obs")
+ggcorrplot(cor_matrix,
+           method = "square",    
+           type = "lower",       
+           lab = TRUE,           
+           lab_size = 3,        
+           title = "Correlation Matrix of Insurance Data",
+           ggtheme = theme_minimal())
+```
+
+```{r}
+vars <- step(model, direction="forward", trace=FALSE)
+summary(vars)
+
+# Residual Plot
+prediction <- predict(model)
+
+residuals <- residuals(model)
+
+plot <- plot(prediction, residuals,
+              xlab = "Predicted Claim Amount",
+              ylab = "Residuals",
+              main = "Residual Plot",
+              pch = 16)
+
+abline(h = 0, col = "red", lwd = 2)
+```
+
+```{r}
+# Creating a model based on stepwise and correlation matrix information
+model.step <- lm(CLM_AMT ~ KIDSDRIV + HOME_VAL + CAR_AGE + MSTATUS + CAR_TYPE + OCCUPATION, data = insurance.filter)
+summary(model.step)
+
+# Residual Plot
+prediction.step <- predict(model.step)
+
+residuals.step <- residuals(model.step)
+
+plot.step <- plot(prediction.step, residuals.step,
+              xlab = "Predicted Claim Amount",
+              ylab = "Residuals",
+              main = "Residual Plot",
+              pch = 16)
+
+abline(h = 0, col = "red", lwd = 2)
+```
+
+```{r}
+library(randomForest)
+library(VIM)
+
+
+# Performing KNN imputation
+insurance.imputed <- kNN(insurance.filter, 
+                                        k = 5,
+                                        imp_var = FALSE)  # Disabling generation of "imp" columns
+
+# KNN for NA values and Random Forest (After Stepwise) Model
+set.seed(1234)
+RF <- randomForest(CLAIM_FLAG ~ KIDSDRIV + HOME_VAL + CAR_AGE + MSTATUS + CAR_TYPE + OCCUPATION, data = insurance.imputed,
+                   ntree = 501,
+                   mtry = 3,
+                   importance = TRUE)
+RF
+varImpPlot(RF, main = "Variable Importance Plot")
+```
+
+```{r}
+insurance_clean1$CLM_AMT <- as.numeric(insurance_clean1$CLM_AMT)
+
+
+# Log Plot of Post-Stepwise Variables
+model.log <- lm(log(CLM_AMT) ~ KIDSDRIV + HOME_VAL + CAR_AGE + MSTATUS + CAR_TYPE + OCCUPATION, data = clean_insurance1)
+summary(model.log)
+```
+
+```{r}
+# Scatterplot of individual relationships
+library(ggplot2)
+library(patchwork)
+library(gridExtra)
+library(grid)
+
+
+ggplot.1 <- ggplot(data = insurance.filter, aes(x = HOMEKIDS, y = CLM_AMT)) +
+    geom_point() +
+    geom_smooth(method = "lm", se = FALSE, color = "blue") +
+    labs(title = "Claim Amount vs Number of Kids", x = "Number of Kids", y = "Claim Amount") +
+    theme_minimal()
+
+ggplot.2 <- ggplot(data = insurance.filter, aes(x = KIDSDRIV, y = CLM_AMT)) +
+    geom_point() +
+    geom_smooth(method = "lm", se = FALSE, color = "blue") +
+    labs(title = "Claim Amount vs Number of Kids Driving", x = "Number of Kids Driving", y = "Claim Amount") +
+    theme_minimal()
+
+ggplot.3 <- ggplot(data = insurance.filter, aes(x = INCOME, y = CLM_AMT)) +
+    geom_point() +
+    geom_smooth(method = "lm", se = FALSE, color = "blue") +
+    labs(title = "Claim Amount vs Income", x = "Income", y = "Claim Amount") +
+    theme_minimal()
+
+ggplot.4 <- ggplot(data = insurance.filter, aes(x = HOME_VAL, y = CLM_AMT)) +
+    geom_point() +
+    geom_smooth(method = "lm", se = FALSE, color = "blue") +
+    labs(title = "Claim Amount vs Home Value", x = "Home Value", y = "Claim Amount") +
+    theme_minimal()
+
+# Combine plots into a matrix layout
+grid.arrange(
+    grobs = list(ggplot.1, ggplot.2, ggplot.3, ggplot.4),  # List of plots
+    ncol = 2,                                  # Number of columns in the grid
+    top = textGrob("Relationships Between Quantitative Predictors and Claim Amount", 
+                   gp = gpar(fontsize = 16, fontface = "bold"))
+)
+ # Try using CLM_FLAG as response and use logistic regression
+# Try removing all CLM_AMTs below $ 25,000 and see if that shows a relationship
+```
+
+```{r}
+# Logistic Regression with CLAIM_FLAG as response instead of CLM_AMT
+clm.regression <- glm(CLAIM_FLAG ~ KIDSDRIV + HOME_VAL + CAR_AGE + MSTATUS + CAR_TYPE + OCCUPATION, family = "binomial", data = insurance.filter)
+summary(clm.regression)
+
+```
+
+```{r}
+# Logistic Residuals
+
+residuals.glm <- residuals(clm.regression, type = "deviance")
+
+fitted_values <- fitted(clm.regression)
+
+plot_data <- data.frame(Fitted = fitted_values, Residuals = residuals.glm)
+
+plot.glm <- ggplot(plot_data, aes(x = Fitted, y = Residuals)) +
+  geom_point(color = "blue") +
+  geom_hline(yintercept = 0, linetype = "dashed", color = "red") +
+  labs(title = "Residual Plot for Logistic Regression",
+       x = "Fitted Values",
+       y = "Deviance Residuals") +
+  theme_minimal()
+
+
+```
+
+```{r}
+clm.25k.rm <- insurance.filter %>%
+    filter(CLM_AMT >= 25000 & HOME_VAL >= 25000)
+
+model.step1 <- lm(CLM_AMT ~ KIDSDRIV + HOME_VAL + CAR_AGE + MSTATUS + CAR_TYPE + OCCUPATION, data = clm.25k.rm)
+summary(model.step1)
+
+```
+
+```{r}
+# Robust Log Model With clm.25k.rm data
+library(MASS)
+
+robust.model <- rlm(log(CLM_AMT) ~ KIDSDRIV + HOME_VAL + CAR_AGE + MSTATUS + CAR_TYPE + OCCUPATION, data = clm.25k.rm)
+summary(robust.model)
+
+hist(clm.25k.rm$CLM_AMT)
+```
+
+```{r}
+# Removing rows with missing or zero values in CLM_AMT
+insurance_backup <- insurance_backup[!is.na(insurance_backup$CLM_AMT) & insurance_backup$CLM_AMT > 0, ]
+
+# Creating the boxplot with different colors for each group
+ggplot(data = insurance_backup, aes(x = factor(SexAgeGroup), y = CLM_AMT, fill = SexAgeGroup)) +
+  geom_boxplot(color = "black") +
+  labs(title = "Boxplot of Claim Amount by Age and Gender Group", 
+       x = "Sex & Age Group", y = "Claim Amount (CLM_AMT)") +
+  coord_cartesian(ylim = c(0, 30000)) + 
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1)) +
+  scale_fill_viridis_d(option = "plasma", direction = 1)
+
+
+
+
+
+```
+
+
+
+```{r}
+# Removing my empty category
+insurance_filtered <- insurance_backup %>%
+  filter(OCCUPATION != "")
+
+# Boxplot with Claim Amount by Occupation
+ggplot(data = insurance_filtered, aes(x = OCCUPATION, y = CLM_AMT, fill = OCCUPATION)) +
+  geom_boxplot(color = "black") + 
+  labs(title = "Boxplot of Claim Amount by Occupation", 
+       x = "Occupation", y = "Claim Amount (CLM_AMT)") +
+  coord_cartesian(ylim = c(0, 40000)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 90, hjust = 1))
+
+
+```
+
+```{r}
+# Boxplot of Claim Amount by Marital Status (Need to change z_No to No in graph)
+
+ggplot(data = insurance_backup, aes(x = MSTATUS, y = CLM_AMT, fill = MSTATUS)) +
+  geom_boxplot(color = "black") +
+  labs(title = "Boxplot of Claim Amount by Marital Status", 
+       x = "Marital Status", 
+       y = "Claim Amount (CLM_AMT)") +
+  coord_cartesian(ylim = c(0, 40000)) +
+  theme_minimal() +
+  theme(axis.text.x = element_text(angle = 45, hjust = 1)) +
+  scale_fill_brewer(palette = "Pastel1")
+
+```
+
