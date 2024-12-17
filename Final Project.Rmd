@@ -1,0 +1,180 @@
+---
+title: "Final Project"
+author: "Jacob English"
+date: "2023-04-23"
+output: html_document
+---
+
+Goal of the final project: Find the top 3 postseason hitters from 2000-2021 (Not including this year or last year)
+```{r setup, include=FALSE}
+library(tidyverse)
+
+library(readxl)
+
+library(Lahman)
+
+install.packages("ggthemes")
+
+library(ggthemes)
+
+post_bat_data <- BattingPost
+
+people_data <- People
+
+astros_data <- read_xlsx("astros_data.xlsx")
+```
+
+```{r}
+player_data <- people_data %>%
+    select(playerID, nameFirst, nameLast, nameGiven)
+```
+
+```{r}
+data <- inner_join(player_data, post_bat_data, by = "playerID")
+
+data %>%                    # Checking what years the data covers
+    summarize(min = min(yearID),
+              max = max(yearID))
+```
+
+```{r}
+simple_data <- data %>%
+    mutate(name = paste0(nameFirst," ",nameLast)) %>% 
+    group_by(name) %>%
+    filter(yearID >= 2000) %>%
+    filter(G > 5) %>%
+    summarize(Hits = H,
+              Home_runs = HR,
+              Runs_batted_in = RBI)
+
+simple_data %>%
+    arrange(-Hits)
+
+simple_data %>%
+    arrange(-Home_runs)
+
+simple_data %>%
+    arrange(-Runs_batted_in)
+```
+
+
+
+```{r}
+ba_data <- data %>%
+    mutate(name = paste0(nameFirst, " ", nameLast)) %>% 
+    group_by(name) %>%
+    filter(yearID >= 2000) %>%
+    filter(G > 5) %>%
+    summarize(BA = H / AB) %>%
+    arrange(-BA)
+```
+
+```{r ba_graph}
+ba_data %>%
+    arrange(-BA) %>%
+    head(7) %>%
+    ggplot(aes(x = reorder(name, -BA), y = BA)) +
+    geom_col(fill = "pink") +
+    theme_economist_white() + # Makes background white
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.5)) +
+    xlab("Hitter") +
+    ylab("Batting Average in Playoffs") +
+    ggtitle("Top 3 Playoff Hitters By Batting Average")
+```
+
+
+
+
+
+
+```{r}
+# Finding top players by OBP
+obp_data <- data %>%
+    mutate(name = paste0(nameFirst, " ", nameLast)) %>% 
+    group_by(name) %>%
+    filter(yearID >= 2000) %>%
+    filter(G > 5) %>%
+    summarize(OBP = (H + BB + HBP) / (AB + BB + HBP + SF)) %>%
+    arrange(-OBP)
+
+```
+
+```{r obp_graph}
+obp_data %>%
+    arrange(-OBP) %>%
+    head(7) %>%
+    ggplot(aes(x = reorder(name, -OBP), y = OBP)) +
+    geom_col(fill = "green") +
+    theme_economist_white() + # Makes background white
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.5)) +
+    xlab("Hitter") +
+    ylab("OBP in Playoffs") +
+    ggtitle("Top 3 Playoff Hitters By OBP")
+```
+
+
+
+
+
+
+
+```{r}
+data <- data %>%
+    mutate(X1B = H - X2B - X3B - HR)
+
+slg_data <- data %>%
+    mutate(name = paste0(nameFirst, " ", nameLast)) %>% 
+    group_by(name) %>%
+    filter(yearID >= 2000) %>%
+    filter(G > 5) %>%
+    summarize(SLG = ((X1B + (2 * X2B) + (3 * X3B)) + (4 * HR)) / (AB)) %>%
+    arrange(-SLG)
+
+ops_data <- data %>%
+    mutate(name = paste0(nameFirst, " ", nameLast)) %>% 
+    group_by(name) %>%
+    filter(yearID >= 2000) %>%
+    filter(G > 5) %>%
+    summarize(OPS = ((H + BB + HBP) / (AB + BB + HBP + SF)) + ((X1B + (2 * X2B) + (3 * X3B)) + (4 * HR)) / (AB)) %>%
+    arrange(-OPS) 
+```
+```{r slg_graph}
+slg_data %>%
+    arrange(-SLG) %>%
+    head(7) %>%
+    ggplot(aes(x = reorder(name, -SLG), y = SLG)) +
+    geom_col(fill = "blue") +
+    theme_economist() + # Makes background white
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.5)) +
+    xlab("Hitter") +
+    ylab("Slugging Percentage in Playoffs") +
+    ggtitle("Top 3 Playoff Hitters By Slugging Percentage")
+```
+
+
+```{r ops_graph}
+ops_data %>%
+    arrange(-OPS) %>%
+    head(7) %>%
+    ggplot(aes(x = reorder(name, -OPS), y = OPS)) +
+    geom_col(fill = "red") +
+    theme_economist_white() + # Makes background white
+    theme(axis.text.x = element_text(angle = 45, vjust = 0.5)) +
+    xlab("Hitter") +
+    ylab("OPS in Playoffs") +
+    ggtitle("Top 3 Playoff Hitters By OPS") 
+```
+
+
+
+
+Ethical Concerns: Houston Astros 2017 Data
+```{r}
+astros_data %>%
+    mutate(OPS = OBP + SLG) %>%
+    filter(Games > 80) %>%
+    summarize(mean_avg = mean(AVG),
+              mean_obp = mean(OBP),
+              mean_slg = mean(SLG),
+              mean_ops = mean(OPS))
+```
