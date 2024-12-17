@@ -1,0 +1,135 @@
+---
+title: "Clutch Player Presentation"
+author: "Jacob English"
+date: "2023-04-16"
+output: html_document
+---
+
+```{r}
+library(tidyverse)
+library(ggthemes)
+
+data <- read_csv("Statcast_2021.csv")
+
+
+```
+
+```{r}
+players <- read_csv("SFBB Player ID Map - PLAYERIDMAP.csv") 
+
+mlb_players <- players %>% select(MLBID, MLBNAME)
+
+full_data <- left_join(data, mlb_players, by = c("batter" = "MLBID"))
+
+```
+
+
+
+
+```{r}
+end_game_data <- full_data %>%
+    select(player_name, events, inning, description, home_team, away_team, on_3b, on_2b, on_1b, outs_when_up, estimated_ba_using_speedangle, 
+           estimated_woba_using_speedangle, woba_value, babip_value, home_score, away_score, MLBNAME) %>%
+    group_by(MLBNAME) %>%
+    filter(inning == 7 | inning == 8 | inning == 9) %>%
+    filter(events == "walk" | events == "single" | events == "double" | events == "triple" | events == "home_run" | events == "HBP" | events == "sac_fly") %>%
+    filter(!is.na(on_3b) | !is.na(on_2b)) %>%
+    summarize(clutch_abs = n()) %>%
+    arrange(-clutch_abs)
+
+```
+
+
+
+
+```{r}
+close_game_data <- full_data %>%
+    select(player_name, events, inning, description, home_team, away_team, on_3b, on_2b, on_1b, outs_when_up, estimated_ba_using_speedangle, 
+           estimated_woba_using_speedangle, woba_value, babip_value, home_score, away_score, MLBNAME) %>%
+    group_by(MLBNAME) %>%
+    filter(inning == 7 | inning == 8 | inning == 9) %>%
+    filter(events == "walk" | events == "single" | events == "double" | events == "triple" | events == "home_run" | events == "HBP" | events == "sac_fly") %>%
+    filter(abs(home_score - away_score) <= 2) %>%
+    filter(!is.na(on_3b) | !is.na(on_2b))
+    
+    
+```
+
+
+```{r}
+close <- close_game_data %>%
+    group_by(MLBNAME) %>%
+    summarize(num_clutch_abs = n()) %>%
+    arrange(-num_clutch_abs)
+```
+
+
+
+
+```{r}
+clutch_hits_data <- full_data %>%
+    select(player_name, events, inning, description, home_team, away_team, on_3b, on_2b, on_1b, outs_when_up, estimated_ba_using_speedangle, 
+           estimated_woba_using_speedangle, woba_value, babip_value, home_score, away_score, MLBNAME) %>%
+    group_by(MLBNAME) %>%
+    filter(inning == 7 | inning == 8 | inning == 9) %>%
+    filter(events == "single" | events == "double" | events == "triple" | events == "home_run") %>%
+    filter(abs(home_score - away_score) <= 2) %>%
+    filter(!is.na(on_3b) | !is.na(on_2b))
+```
+
+
+
+```{r}
+hits <- clutch_hits_data %>%
+    group_by(MLBNAME) %>%
+    summarize(num_clutch_hits = n()) %>%
+    arrange(-num_clutch_hits)
+```
+
+
+
+```{r}
+hits %>% filter(!is.na(MLBNAME)) %>%
+  arrange(-num_clutch_hits) %>% 
+  head(10) %>% 
+  ggplot(aes(x = reorder(MLBNAME, -num_clutch_hits),y = num_clutch_hits)) + 
+    geom_col()+
+  theme_economist()+
+  theme(axis.text.x = element_text(angle = 45, vjust = .8))+
+  xlab("Batter")+
+  ylab("Clutch Hits")+
+  ggtitle("Hits with RISP in 7-9 Inning")+
+  theme(axis.title.y = element_text(vjust=2))
+
+close %>% filter(!is.na(MLBNAME)) %>%
+  arrange(-num_clutch_abs) %>% 
+  head(10) %>% 
+  ggplot(aes(x = reorder(MLBNAME, -num_clutch_abs),y = num_clutch_abs)) + 
+  geom_col()+
+  theme_economist()+
+  theme(axis.text.x = element_text(angle = 45, vjust = .8))+
+  xlab("Batter")+
+  ylab("Clutch At Bats")+
+  ggtitle("At Bats with RISP in 7-9 Innings")+
+  theme(axis.title.y = element_text(vjust=2))
+```
+
+```{r}
+clutch_stats <- merge(close, hits)
+colnames(clutch_stats)<-c("Batter","Close_abs","Hits")
+clutch_stats <- clutch_stats %>% mutate(clutch = (0.6* Hits + 0.4* Close_abs)) 
+
+clutch_stats %>% filter(!is.na(Batter))%>% 
+  arrange(-clutch) %>% 
+  head(10) %>% 
+  ggplot(aes(x=reorder(Batter,-clutch),y=clutch))+
+  geom_col()+
+  theme_economist()+
+  theme(axis.text.x = element_text(angle = 45, vjust = .8))+
+  xlab("Batter")+
+  ylab("Clutch Rating")+
+  ggtitle("Combined Clutch Rating")+
+  theme(axis.title.y = element_text(vjust=2))
+
+```
+
